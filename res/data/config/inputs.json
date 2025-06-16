@@ -1,0 +1,35 @@
+{
+  "movement": {
+    "actions": {
+      "player_up": {
+        "inputs": [
+          { "type": "keyboard", "key": "W" },
+          { "type": "keyboard", "key": "UP" }
+        ]
+      },
+      "player_down": {
+        "inputs": [
+          { "type": "keyboard", "key": "S" },
+          { "type": "keyboard", "key": "DOWN" }
+        ]
+      },
+      "player_right": {
+        "inputs": [
+          { "type": "keyboard", "key": "D" },
+          { "type": "keyboard", "key": "RIGHT" }
+        ]
+      },
+      "player_left": {
+        "inputs": [
+          { "type": "keyboard", "key": "A" },
+          { "type": "keyboard", "key": "LEFT" }
+        ]
+      },
+      "player_walk": {
+        "inputs": [
+          { "type": "keyboard", "key": "LSHIFT" }
+        ]
+      }
+    }
+  }
+}

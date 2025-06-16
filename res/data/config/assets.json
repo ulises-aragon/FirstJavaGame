@@ -1,0 +1,65 @@
+{
+  "spriteSheets": {
+    "overworld": {
+      "path": "assets/sprites/tiles/tileset.png",
+      "spriteSize": {
+        "x": 16,
+        "y": 16
+      }
+    }
+  },
+  "sprites": {},
+  "registries": {
+    "player": {
+      "spriteSheet": {
+        "path": "assets/sprites/cat/cat.png",
+        "spriteSize": {
+          "x": 16,
+          "y": 16
+        }
+      },
+      "animations": {
+        "idle": {
+          "priority": "IDLE",
+          "row": 0,
+          "from": 0,
+          "to": 3,
+          "frameDelay": 15,
+          "loops": true
+        },
+        "walk": {
+          "priority": "MOVEMENT",
+          "row": 1,
+          "from": 0,
+          "to": 3,
+          "frameDelay": 15,
+          "loops": true
+        },
+        "run": {
+          "priority": "MOVEMENT",
+          "row": 6,
+          "from": 0,
+          "to": 3,
+          "frameDelay": 10,
+          "loops": true
+        },
+        "stand": {
+          "priority": "ACTION",
+          "row": 14,
+          "from": 0,
+          "to": 3,
+          "frameDelay": 2,
+          "loops": false
+        },
+        "sit": {
+          "priority": "ACTION",
+          "row": 15,
+          "from": 0,
+          "to": 3,
+          "frameDelay": 8,
+          "loops": false
+        }
+      }
+    }
+  }
+}
