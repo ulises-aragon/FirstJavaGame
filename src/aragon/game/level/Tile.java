@@ -1,9 +1,7 @@
 package aragon.game.level;
 
 import aragon.game.graphics.Sprite;
-import aragon.game.main.GameHandler;
-import aragon.game.main.states.State;
-import aragon.game.util.Vector2D;
+import aragon.game.util.Vector2;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -12,11 +10,11 @@ import java.util.Map;
 
 public class Tile {
     private final int id;
-    private TileType type;
+    private final TileType type;
     private final BufferedImage image;
     private final int tileWidth;
     private final int tileHeight;
-    private Map<String, Object> properties;
+    private final Map<String, Object> properties;
 
     public Tile(int id, int tileWidth, int tileHeight, TileType type, Sprite sprite) {
         this.id = id;
@@ -50,9 +48,9 @@ public class Tile {
         return defaultValue;
     }
 
-    public void render(Graphics graphics, GameHandler gameHandler, int x, int y) {
+    public void render(Graphics graphics, Level level, int x, int y) {
         if (image == null) return;
-        Vector2D cameraPosition = gameHandler.getCamera().getPosition();
+        Vector2 cameraPosition = level.getGameState().getGame().getCamera().getPosition();
 
         graphics.drawImage(
                 image,

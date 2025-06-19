@@ -1,18 +1,33 @@
 {
+  "autoLoad": {
+    "directories": [
+      {
+        "path": "/assets/sprites",
+        "type": "SPRITE"
+      },
+      {
+        "path": "/data/tileset",
+        "type": "TILESET"
+      },
+      {
+        "path": "/data/level",
+        "type": "LEVELDATA"
+      }
+    ]
+  },
   "spriteSheets": {
-    "overworld": {
-      "path": "assets/sprites/tiles/tileset.png",
+    "garden": {
+      "path": "assets/sheets/tiles/garden.png",
       "spriteSize": {
         "x": 16,
         "y": 16
       }
     }
   },
-  "sprites": {},
   "registries": {
     "player": {
       "spriteSheet": {
-        "path": "assets/sprites/cat/cat.png",
+        "path": "assets/sheets/cat/cat.png",
         "spriteSize": {
           "x": 16,
           "y": 16

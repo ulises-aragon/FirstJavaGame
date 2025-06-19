@@ -1,8 +1,8 @@
 package aragon.game.input;
 
-import aragon.game.util.Vector2D;
+import aragon.game.util.Vector2;
 
 public interface InputMouseEventListener {
-    default void onMouseMoved(Vector2D position, Vector2D delta) {}
+    default void onMouseMoved(Vector2 position, Vector2 delta) {}
     default void onMouseScrolled(int scrollDelta) {}
 }

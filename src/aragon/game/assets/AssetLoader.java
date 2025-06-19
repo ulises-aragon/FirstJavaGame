@@ -14,17 +14,14 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.file.*;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Stream;
@@ -33,17 +30,11 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 public final class AssetLoader implements AutoCloseable {
-    private static final Logger LOGGER = LogManager.getLogger(AssetLoader.class);
     private static volatile AssetLoader instance;
+    private final Logger LOGGER = LogManager.getLogger(AssetLoader.class);
 
-    private static final Map<String, Sprite> sprites = new ConcurrentHashMap<>();
-    private static final Map<String, SpriteSheet> spriteSheets = new ConcurrentHashMap<>();
-    private static final Map<String, Animation> animations = new ConcurrentHashMap<>();
-    private static final Map<String, TileSet> tileSets = new ConcurrentHashMap<>();
-    private static final Map<String, LevelData> levelDataRegistry = new ConcurrentHashMap<>();
-
-    private final Game game;
-    private AssetManifest assets;
+    private final AssetManager assetManager;
+    private AssetManifest assetManifest;
     private final Gson gson;
     private final Validator validator;
     private final ExecutorService executor;
@@ -51,10 +42,11 @@ public final class AssetLoader implements AutoCloseable {
     private final AssetLoadingStats stats = new AssetLoadingStats();
 
     private AssetLoader(Game game) {
-        this.game = game;
+        this.assetManager = game.getAssetManager();
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.validator = Validation.buildDefaultValidatorFactory().getValidator();
         this.executor = Executors.newFixedThreadPool(4);
+        LOGGER.info("Instantiated new singleton.");
     }
 
     public static AssetLoader build(Game game) {
@@ -64,13 +56,6 @@ public final class AssetLoader implements AutoCloseable {
                     instance = new AssetLoader(game);
                 }
             }
-        }
-        return instance;
-    }
-
-    public static AssetLoader get() {
-        if (instance == null) {
-            throw new IllegalStateException("AssetLoader is not initialized. Do build(game) first.");
         }
         return instance;
     }
@@ -95,8 +80,7 @@ public final class AssetLoader implements AutoCloseable {
             loadAssetManifest();
             validateAssetManifest();
             preloadAssetsFromAssetManifest();
-            loadTileSets();
-            loadLevelData();
+            autoLoadAssetsFromAssetManifest();
 
             long duration = System.currentTimeMillis() - startTime;
             LOGGER.info("Asset loading finished in {}ms. {}", duration, stats.getSummary());
@@ -107,7 +91,7 @@ public final class AssetLoader implements AutoCloseable {
         }
     }
 
-    private <T> void loadDataFromDirectory(String directoryPath, String prefix, Class<T> dataType,
+    private <T> void loadDataFromDirectory(String directoryPath, Class<T> dataType,
                                            AssetValidator<T> validation, AssetProcessor<T> processor) throws AssetLoadingException {
         try {
             InputStream testStream = getClass().getResourceAsStream(directoryPath);
@@ -120,7 +104,7 @@ public final class AssetLoader implements AutoCloseable {
             String[] expectedDataFiles = getExpectedFilesForPath(directoryPath);
             for (String fileName : expectedDataFiles) {
                 String fullResourcePath = directoryPath + "/" + fileName;
-                String key = generateKeyFromFileName(prefix, fileName);
+                String key = generateKeyFromFileName(fileName);
 
                 try (InputStream stream = getClass().getResourceAsStream(fullResourcePath);
                      InputStreamReader reader = new InputStreamReader(stream)) {
@@ -160,13 +144,13 @@ public final class AssetLoader implements AutoCloseable {
 
     private String[] getExpectedFilesForPath(String resourcePath) {
         return switch (resourcePath) {
-            case "/data/tileset" -> new String[]{"overworld/default.json"}; // Add more as needed
-            case "/data/level" -> new String[]{"overworld/first.json", "overworld/second.json"}; // Add more as needed
+            case "/data/tileset" -> new String[]{"overworld/garden.json"}; // Add more as needed
+            case "/data/level" -> new String[]{"overworld/test.json"}; // Add more as needed
             default -> new String[0];
         };
     }
 
-    private <T> void loadDataFromDirectoryAuto(String directoryPath, String prefix, Class<T> dataType,
+    private <T> void loadDataFromDirectoryAuto(String directoryPath, Class<T> dataType,
                                                AssetValidator<T> validation, AssetProcessor<T> processor) throws AssetLoadingException {
         try {
             URI uri = getClass().getResource(directoryPath).toURI();
@@ -191,7 +175,7 @@ public final class AssetLoader implements AutoCloseable {
                         .forEach(jsonPath -> {
                             try {
                                 String relativePath = getRelativePathString(finalPath, jsonPath);
-                                String key = generateKeyFromPath(prefix, relativePath);
+                                String key = generateKeyFromPath(relativePath);
 
                                 try (InputStream stream = Files.newInputStream(jsonPath);
                                      InputStreamReader reader = new InputStreamReader(stream)) {
@@ -211,16 +195,54 @@ public final class AssetLoader implements AutoCloseable {
                         });
             }
         } catch (Exception exception) {
-            throw new AssetLoadingException("Failed to auto-discover " + dataType.getSimpleName() + "s from directory: " + directoryPath, exception);
+            throw new AssetLoadingException("Failed to auto-load " + dataType.getSimpleName() + " from directory: " + directoryPath, exception);
         }
     }
 
-    private void loadTileSets() throws AssetLoadingException {
-        loadDataFromDirectoryAuto("/data/tileset", "tileset", TileSetData.class, this::validateTileSet, this::processTileSet);
-    }
+    private void loadSpritesFromDirectoryAuto(String directoryPath) throws AssetLoadingException {
+        try {
+            URI uri = getClass().getResource(directoryPath).toURI();
+            Path path;
 
-    private void loadLevelData() throws AssetLoadingException {
-        loadDataFromDirectoryAuto("/data/level", "level", LevelData.class, this::validateLevelData, this::processLevelData);
+            if (uri.getScheme().equals("jar")) {
+                try {
+                    FileSystem fileSystem = FileSystems.getFileSystem(uri);
+                    path = fileSystem.getPath(directoryPath);
+                } catch(Exception exception) {
+                    FileSystem fileSystem = FileSystems.newFileSystem(uri, Map.of());
+                    path = fileSystem.getPath(directoryPath);
+                }
+            } else {
+                path = Paths.get(uri);
+            }
+
+            try (Stream<Path> paths = Files.walk(path)) {
+                Path finalPath = path;
+                paths.filter(Files::isRegularFile)
+                        .filter(p -> isImageFile(p.toString()))
+                        .forEach(imagePath -> {
+                            try {
+                                String relativePath = getRelativePathString(finalPath, imagePath);
+                                String key = generateKeyFromPath(relativePath);
+
+                                SpriteData config = new SpriteData();
+                                String resourcePath = getResourcePath(
+                                        directoryPath,
+                                        getRelativePathStringWithExtension(finalPath, imagePath)
+                                ).substring(1);
+
+                                config.setPath(resourcePath);
+                                loadSprite(key, config);
+
+                            } catch(Exception exception) {
+                                LOGGER.error("Failed to auto-load sprite file: {}", imagePath, exception);
+                                stats.recordFailure();
+                            }
+                        });
+            }
+        } catch (Exception exception) {
+            throw new AssetLoadingException("Failed to auto-load sprites from directory: " + directoryPath, exception);
+        }
     }
 
     private void loadAssetManifest() throws IOException {
@@ -231,7 +253,7 @@ public final class AssetLoader implements AutoCloseable {
         }
 
         try (InputStreamReader reader = new InputStreamReader(stream)) {
-            assets = gson.fromJson(reader, AssetManifest.class);
+            assetManifest = gson.fromJson(reader, AssetManifest.class);
             LOGGER.info("Loaded asset configuration. {}", path);
         } catch (JsonSyntaxException exception) {
             throw new IOException("Invalid JSON formation in asset configuration. " + path, exception);
@@ -239,8 +261,36 @@ public final class AssetLoader implements AutoCloseable {
     }
 
     private void validateAssetManifest() throws AssetLoadingException {
-        if (assets.getSpriteSheets() != null) {
-            for (Map.Entry<String, SpriteSheetData> entry : assets.getSpriteSheets().entrySet()) {
+        if (assetManifest.getAutoLoadConfig() != null) {
+            Set<ConstraintViolation<AutoLoadConfig>> configViolations = validator.validate(assetManifest.getAutoLoadConfig());
+            if (!configViolations.isEmpty()) {
+                StringBuilder sb = new StringBuilder("\n\t");
+                for (ConstraintViolation<AutoLoadConfig> violation : configViolations) {
+                    sb.append("- ").append(violation.getPropertyPath())
+                            .append(": ").append(violation.getMessage()).append("\n");
+                }
+                throw new AssetLoadingException(String.format("Invalid auto load configuration: %s", sb));
+            }
+
+            for (AutoLoadDirectoryConfig directoryConfig : assetManifest.getAutoLoadConfig().getDirectories()) {
+                Set<ConstraintViolation<AutoLoadDirectoryConfig>> violations = validator.validate(directoryConfig);
+                if (!violations.isEmpty()) {
+                    StringBuilder sb = new StringBuilder("\n\t");
+                    for (ConstraintViolation<AutoLoadDirectoryConfig> violation : violations) {
+                        sb.append("- ").append(violation.getPropertyPath())
+                                .append(": ").append(violation.getMessage()).append("\n");
+                    }
+                    throw new AssetLoadingException(
+                            String.format("Invalid auto load directory configuration: %s %s",
+                                    directoryConfig, sb
+                            )
+                    );
+                }
+            }
+        }
+
+        if (assetManifest.getSpriteSheets() != null) {
+            for (Map.Entry<String, SpriteSheetData> entry : assetManifest.getSpriteSheets().entrySet()) {
                 Set<ConstraintViolation<SpriteSheetData>> violations = validator.validate(entry.getValue());
                 if (!violations.isEmpty()) {
                     StringBuilder sb = new StringBuilder("\n\t");
@@ -257,8 +307,8 @@ public final class AssetLoader implements AutoCloseable {
             }
         }
 
-        if (assets.getSprites() != null) {
-            for (Map.Entry<String, SpriteData> entry : assets.getSprites().entrySet()) {
+        if (assetManifest.getSprites() != null) {
+            for (Map.Entry<String, SpriteData> entry : assetManifest.getSprites().entrySet()) {
                 String spriteName = entry.getKey();
                 SpriteData sprite = entry.getValue();
 
@@ -300,8 +350,8 @@ public final class AssetLoader implements AutoCloseable {
             }
         }
 
-        if (assets.getRegistries() != null) {
-            for (Map.Entry<String, AssetRegistry> entry : assets.getRegistries().entrySet()) {
+        if (assetManifest.getRegistries() != null) {
+            for (Map.Entry<String, AssetRegistry> entry : assetManifest.getRegistries().entrySet()) {
                 String registryName = entry.getKey();
                 AssetRegistry registry = entry.getValue();
 
@@ -382,8 +432,8 @@ public final class AssetLoader implements AutoCloseable {
     }
 
     private void preloadAssetsFromAssetManifest() throws AssetLoadingException {
-        if (assets.getSpriteSheets() != null) {
-            for (Map.Entry<String, SpriteSheetData> entry : assets.getSpriteSheets().entrySet()) {
+        if (assetManifest.getSpriteSheets() != null) {
+            for (Map.Entry<String, SpriteSheetData> entry : assetManifest.getSpriteSheets().entrySet()) {
                 String spriteSheetName = entry.getKey();
                 SpriteSheetData spriteSheetData = entry.getValue();
 
@@ -396,8 +446,8 @@ public final class AssetLoader implements AutoCloseable {
             }
         }
 
-        if (assets.getSprites() != null) {
-            for (Map.Entry<String, SpriteData> entry : assets.getSprites().entrySet()) {
+        if (assetManifest.getSprites() != null) {
+            for (Map.Entry<String, SpriteData> entry : assetManifest.getSprites().entrySet()) {
                 String spriteName = entry.getKey();
                 SpriteData spriteData = entry.getValue();
 
@@ -410,8 +460,8 @@ public final class AssetLoader implements AutoCloseable {
             }
         }
 
-        if (assets.getRegistries() != null) {
-            for (Map.Entry<String, AssetRegistry> entry : assets.getRegistries().entrySet()) {
+        if (assetManifest.getRegistries() != null) {
+            for (Map.Entry<String, AssetRegistry> entry : assetManifest.getRegistries().entrySet()) {
                 String registryName = entry.getKey();
                 AssetRegistry assetRegistry = entry.getValue();
 
@@ -421,6 +471,23 @@ public final class AssetLoader implements AutoCloseable {
                     stats.recordFailure();
                     throw new AssetLoadingException("Failed to load registry: " + registryName, exception);
                 }
+            }
+        }
+    }
+
+    private void autoLoadAssetsFromAssetManifest() throws AssetLoadingException {
+        AutoLoadConfig autoLoadConfig = assetManifest.getAutoLoadConfig();
+        if (autoLoadConfig == null) return;
+
+        for (AutoLoadDirectoryConfig directoryConfig : autoLoadConfig.getDirectories()) {
+            String directoryPath = directoryConfig.getPath();
+            String directoryType = directoryConfig.getType().toUpperCase();
+
+            switch(directoryType) {
+                case("LEVELDATA") -> loadDataFromDirectoryAuto(directoryPath, LevelData.class, this::validateLevelData, this::processLevelData);
+                case("TILESET") -> loadDataFromDirectoryAuto(directoryPath, TileSetData.class, this::validateTileSet, this::processTileSet);
+                case("SPRITE") -> loadSpritesFromDirectoryAuto(directoryPath);
+                default -> throw new AssetLoadingException(String.format("Invalid directory type: %s", directoryType));
             }
         }
     }
@@ -439,7 +506,7 @@ public final class AssetLoader implements AutoCloseable {
         }
     }
 
-    private void loadSpriteSheet(String registryName, SpriteSheetData config) throws AssetLoadingException {
+    private void loadSpriteSheet(String key, SpriteSheetData config) throws AssetLoadingException {
         try {
             SpriteSheet spriteSheet = new SpriteSheet(config.getPath());
 
@@ -449,13 +516,12 @@ public final class AssetLoader implements AutoCloseable {
             Vector2Data offset = config.getOffset();
             spriteSheet.setOffset(offset.getX(), offset.getY());
 
-            spriteSheets.put(registryName, spriteSheet);
+            assetManager.registerSpriteSheet(key, spriteSheet);
             stats.recordSpriteSheetLoaded();
 
-            LOGGER.info("Loaded sprite sheet: {}", registryName);
 
         } catch (Exception exception) {
-            throw new AssetLoadingException("Failed to load SpriteSheet: " + registryName, exception);
+            throw new AssetLoadingException("Failed to load SpriteSheet: " + key, exception);
         }
     }
 
@@ -481,7 +547,7 @@ public final class AssetLoader implements AutoCloseable {
                 sprite = new Sprite(spriteData.getPath());
             } else if (spriteData.isSheetSprite()) {
                 String registryName = key.split("\\.")[0];
-                SpriteSheet sheet = spriteSheets.get(registryName);
+                SpriteSheet sheet = assetManager.getSpriteSheet(registryName);
                 if (sheet == null) {
                     throw new AssetLoadingException("No valid sprite sheet found for registry: " + registryName);
                 }
@@ -495,7 +561,7 @@ public final class AssetLoader implements AutoCloseable {
                 Vector2Data spritePosition = spriteReference.getPos();
                 sprite = sheet.getSprite(spritePosition.getX(), spritePosition.getY());
             } else if (spriteData.isReferencedSheetSprite()) {
-                SpriteSheet sheet = spriteSheets.get(spriteData.getPath());
+                SpriteSheet sheet = assetManager.getSpriteSheet(spriteData.getPath());
                 if (sheet == null) {
                     throw new AssetLoadingException("No valid sprite sheet found for key: " + spriteData.getPath());
                 }
@@ -512,17 +578,16 @@ public final class AssetLoader implements AutoCloseable {
                 throw new AssetLoadingException("Invalid sprite configuration: " + key);
             }
 
-            sprites.put(key, sprite);
+            assetManager.registerSprite(key, sprite);
             stats.recordSpriteLoaded();
 
-            LOGGER.info("Loaded sprite: {}", key);
         } catch(Exception exception) {
             throw new AssetLoadingException("Failed to load sprite: " + key, exception);
         }
     }
 
     private void loadAnimations(String registryName, Map<String, AnimationData> animationsConfig) throws AssetLoadingException {
-        SpriteSheet sheet = spriteSheets.get(registryName);
+        SpriteSheet sheet = assetManager.getSpriteSheet(registryName);
         if (sheet == null) {
             throw new AssetLoadingException("No sprite sheet found for '" + registryName + "'");
         }
@@ -540,10 +605,8 @@ public final class AssetLoader implements AutoCloseable {
                 }
 
                 Animation animation = new Animation(frames, animationData.getResolvedPriority(), animationData.getFrameDelay(), animationData.isLooping());
-                animations.put(key, animation);
+                assetManager.registerAnimation(key, animation);
                 stats.recordAnimationLoaded();
-
-                LOGGER.info("Loaded animation: {} ({} frames)", key, frames.length);
 
             } catch (Exception e) {
                 throw new AssetLoadingException("Failed to load animation: " + registryName + "." + animationName, e);
@@ -580,7 +643,7 @@ public final class AssetLoader implements AutoCloseable {
             );
         }
 
-        if (spriteSheets.get(spriteReference.getPath()) == null) {
+        if (assetManager.getSpriteSheet(spriteReference.getPath()) == null) {
             throw new AssetLoadingException(
                     String.format("Invalid sprite sheet path for tile set: %s", key)
             );
@@ -614,24 +677,22 @@ public final class AssetLoader implements AutoCloseable {
         TileSetData tilesetData = entry.getValue();
 
         TileSetSpriteReference spriteReference = tilesetData.getSheet();
-        SpriteSheet spriteSheet = spriteSheets.get(spriteReference.getPath());
+        SpriteSheet spriteSheet = assetManager.getSpriteSheet(spriteReference.getPath());
         Vector2Data tileSize = spriteReference.getTileSize();
 
         int tileWidth = tileSize != null ? tileSize.getX() : (int) spriteSheet.getSpriteSize().x;
         int tileHeight = tileSize != null ? tileSize.getY() : (int) spriteSheet.getSpriteSize().y;
 
-        TileSet tileset = new TileSet(tilesetData.getName(), spriteSheet, tileWidth, tileHeight);
+        TileSet tileSet = new TileSet(spriteSheet, tileWidth, tileHeight);
 
         for (int id=0; id<tilesetData.getTiles().size(); id++) {
             TileData tileData = tilesetData.getTiles().get(id);
             Vector2Data spriteCoordinates = tileData.getSpriteCoordinates();
-            tileset.addNewTile(id, tileData.getResolvedType(), spriteCoordinates.getX(), spriteCoordinates.getY());
+            tileSet.addNewTile(id, tileData.getResolvedType(), spriteCoordinates.getX(), spriteCoordinates.getY());
         }
 
-        tileSets.put(key, tileset);
+        assetManager.registerTileSet(key, tileSet);
         stats.recordTileSetLoaded();
-
-        LOGGER.info("Loaded tile set: {}", key);
     }
 
     private void validateLevelData(Map.Entry<String, LevelData> entry) throws AssetLoadingException {
@@ -650,7 +711,7 @@ public final class AssetLoader implements AutoCloseable {
             );
         }
 
-        if (tileSets.get(levelData.getTileSet()) == null) {
+        if (assetManager.getTileSet(levelData.getTileSet()) == null) {
             throw new AssetLoadingException(
                     String.format("Invalid tile set path for level: %s", key)
             );
@@ -682,78 +743,35 @@ public final class AssetLoader implements AutoCloseable {
         String key = entry.getKey();
         LevelData levelData = entry.getValue();
 
-        levelDataRegistry.put(key, levelData);
+        assetManager.registerLevelData(key, levelData);
         stats.recordLevelDataLoaded();
-        LOGGER.info("Loaded level data: {}", key);
     }
 
-    private String generateKeyFromFileName(String prefix, String fileName) {
-        return prefix + "." + fileName.replaceAll("\\.json$", "").replace('/', '.');
+    private boolean isImageFile(String fileName) {
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
     }
 
-    private String generateKeyFromPath(String prefix, String relativePath) {
-        return prefix + "." + relativePath.replace('/', '.');
+    private String generateKeyFromFileName(String fileName) {
+        return fileName.replaceAll("\\.json$", "").replace('/', '.');
+    }
+
+    private String generateKeyFromPath(String relativePath) {
+        return relativePath.replace('/', '.');
+    }
+
+    private String getResourcePath(String basePath, String relativePath) {
+        return basePath.replace("^/", "") + "/" + relativePath;
     }
 
     private String getRelativePathString(Path basePath, Path fullPath) {
         return basePath.relativize(fullPath).toString()
-                .replace('\\', '/') // Normalize separators
-                .replaceAll("\\.json$", ""); // Remove extension
+                .replace('\\', '/')
+                .replaceAll("\\.(?:json|png|jpg|jpeg)$", "");
     }
 
-    public Optional<SpriteSheet> getSpriteSheetOptional(String path) {
-        return Optional.ofNullable(spriteSheets.get(path));
-    }
-
-    public SpriteSheet getSpriteSheet(String path) {
-        return getSpriteSheetOptional(path)
-                .orElseThrow(() -> new IllegalArgumentException("Sprite sheet not found: " + path));
-    }
-
-    public Optional<Animation> getAnimationOptional(String path) {
-        return Optional.ofNullable(animations.get(path));
-    }
-
-    public TileSet getTileSet(String path) {
-        TileSet tileSet = tileSets.get(path);
-        if (tileSet == null) {
-            LOGGER.warn("Tile set not found: {}", path);
-        }
-        return tileSet;
-    }
-
-    public LevelData getLevelData(String path) {
-        LevelData levelData = levelDataRegistry.get(path);
-        if (levelData == null) {
-            LOGGER.warn("Level data not found: {}", path);
-        }
-        return levelData;
-    }
-
-    public Animation getAnimation(String path) {
-        Animation animation = animations.get(path);
-        if (animation == null) {
-            LOGGER.warn("Animation not found: {}", path);
-        }
-        return animation;
-    }
-
-    public Sprite getSprite(String path) {
-        Sprite sprite = sprites.get(path);
-        if (sprite == null) {
-            LOGGER.warn("Sprite not found: {}", path);
-            return createPlaceholderSprite();
-        }
-        return sprite;
-    }
-
-    public Sprite getSprite(String path, int x, int y) {
-        return getSpriteSheetOptional(path)
-                .map(sheet -> sheet.getSprite(x, y))
-                .orElseGet(() -> {
-                    LOGGER.warn("Sprite sheet not found: {}", path);
-                    return createPlaceholderSprite();
-                });
+    private String getRelativePathStringWithExtension(Path basePath, Path fullPath) {
+        return basePath.relativize(fullPath).toString().replace('\\', '/');
     }
 
     public AssetLoadingStats getStats() { return stats; }
@@ -772,28 +790,14 @@ public final class AssetLoader implements AutoCloseable {
         }, executor);
     }
 
-    private Sprite createPlaceholderSprite() {
-        BufferedImage placeholder = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
-        for (int y = 0; y < 2; y++) {
-            for (int x = 0; x < 2; x++) {
-                placeholder.setRGB(x, y, (x == y) ? 0xFF00FF : 0x000000);
-            }
-        }
-        return new Sprite(placeholder);
-    }
-
     public void cleanup() {
-        sprites.clear();
-        spriteSheets.clear();
-        animations.clear();
-        tileSets.clear();
-        levelDataRegistry.clear();
-        assets = null;
+        assetManager.clear();
+        assetManifest = null;
         instance = null;
     }
 
     @Override
-    public void close() throws Exception {
+    public void close()  {
         cleanup();
         executor.shutdown();
         try {

@@ -1,5 +1,5 @@
 {
-  "movement": {
+  "player_control": {
     "actions": {
       "player_up": {
         "inputs": [
@@ -28,6 +28,11 @@
       "player_walk": {
         "inputs": [
           { "type": "keyboard", "key": "LSHIFT" }
+        ]
+      },
+      "player_interact": {
+        "inputs": [
+          { "type":  "keyboard", "key": "SPACE" }
         ]
       }
     }

@@ -1,6 +1,5 @@
 package aragon.game.graphics;
 
-import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,6 +17,7 @@ public class Animation {
     private final List<AnimationFrame> frames = new ArrayList<>();
 
     public Animation(Sprite[] frames, AnimationPriority priority, int frameDelay, boolean loops) {
+        this.priority = priority;
         this.frameDelay = frameDelay;
         this.stopped = true;
         this.loops = loops;
@@ -73,6 +73,7 @@ public class Animation {
     public Sprite getSprite() {
         return frames.get(currentFrame).getSprite();
     }
+    public int getFrameCount() { return frames.size(); }
 
     public void update() {
         if (stopped) return;

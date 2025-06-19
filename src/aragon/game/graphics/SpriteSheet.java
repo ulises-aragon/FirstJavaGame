@@ -1,14 +1,14 @@
 package aragon.game.graphics;
 
-import aragon.game.util.Vector2D;
+import aragon.game.util.Vector2;
 
 import java.awt.image.BufferedImage;
 
 public class SpriteSheet extends Sprite {
-    private Vector2D offset = Vector2D.zero;
-    private Vector2D spriteSize = Vector2D.zero;
-    private Vector2D tempOffset = Vector2D.zero;
-    private Vector2D tempSpriteSize = Vector2D.zero;
+    private Vector2 offset = Vector2.zero;
+    private Vector2 spriteSize = Vector2.zero;
+    private Vector2 tempOffset = Vector2.zero;
+    private Vector2 tempSpriteSize = Vector2.zero;
 
     public SpriteSheet(BufferedImage image) {
         super(image);
@@ -23,31 +23,31 @@ public class SpriteSheet extends Sprite {
     }
 
     public void setSpriteSize(int x, int y) {
-        spriteSize = new Vector2D(x, y);
+        spriteSize = new Vector2(x, y);
         tempSpriteSize = spriteSize;
     }
 
     public void setOffset(int x, int y) {
-        offset = new Vector2D(x, y);
+        offset = new Vector2(x, y);
         tempOffset = offset;
     }
 
     public void withSpriteSize(int x, int y) {
-        tempSpriteSize = new Vector2D(x, y);
+        tempSpriteSize = new Vector2(x, y);
     }
 
     public void withOffset(int x, int y) {
-        tempOffset = new Vector2D(x, y);
+        tempOffset = new Vector2(x, y);
     }
 
-    public Vector2D getSpriteSize() {
-        return new Vector2D(spriteSize);
+    public Vector2 getSpriteSize() {
+        return new Vector2(spriteSize);
     }
 
     public Sprite getSprite(int x, int y) {
-        Vector2D cachedOffset = tempOffset;
+        Vector2 cachedOffset = tempOffset;
         tempOffset = offset;
-        Vector2D cachedSize = tempSpriteSize;
+        Vector2 cachedSize = tempSpriteSize;
         tempSpriteSize = spriteSize;
         return getSubSprite(
                 (int) (cachedOffset.x + (x * cachedSize.x)),
@@ -58,9 +58,9 @@ public class SpriteSheet extends Sprite {
     }
 
     public SpriteSheet getSpriteSheet(int x0, int y0, int x1, int y1) {
-        Vector2D cachedOffset = tempOffset;
+        Vector2 cachedOffset = tempOffset;
         tempOffset = offset;
-        Vector2D cachedSize = tempSpriteSize;
+        Vector2 cachedSize = tempSpriteSize;
         tempSpriteSize = spriteSize;
         return new SpriteSheet(getSubSprite(
                 (int) (cachedOffset.x + (x0 * cachedSize.x)),

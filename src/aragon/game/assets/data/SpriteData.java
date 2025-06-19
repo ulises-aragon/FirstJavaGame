@@ -13,7 +13,7 @@ public class SpriteData {
 
     public SpriteReference getSpriteSheetReference() { return spriteReference; }
 
-    public boolean isPathFile() { return path.contains("/") || path.matches(".*\\.(png|jpg|jpeg|json|txt)$"); }
+    public boolean isPathFile() { return path.contains("/") || path.matches(".*\\.(png|jpg|jpeg|json)$"); }
 
     public boolean isStandaloneSprite() { return path != null && !path.trim().isEmpty() && isPathFile(); }
 

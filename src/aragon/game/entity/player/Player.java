@@ -1,68 +1,63 @@
 package aragon.game.entity.player;
 
-import aragon.game.assets.AssetLoader;
-import aragon.game.entity.Entity;
+import aragon.game.entity.*;
 import aragon.game.graphics.Animation;
 import aragon.game.graphics.Sprite;
 import aragon.game.input.InputActionEventListener;
-import aragon.game.input.InputManager;
-import aragon.game.main.GameHandler;
-import aragon.game.main.states.State;
-import aragon.game.util.Vector2D;
+import aragon.game.main.Game;
+import aragon.game.util.Vector2;
 
 import java.awt.*;
+import java.util.List;
 
-public class Player extends Entity implements InputActionEventListener {
-    private static final AssetLoader assetLoader = AssetLoader.get();
+public class Player extends Creature implements InputActionEventListener {
+    private static final int DEFAULT_SPEED = 3;
+    private static final int WALK_SPEED = 1;
 
-    private static final Animation idleAnimation = assetLoader.getAnimation("player.idle");
-    private static final Animation walkAnimation = assetLoader.getAnimation("player.walk");
-    private static final Animation runAnimation = assetLoader.getAnimation("player.run");
-    private static final Animation sitAnimation = assetLoader.getAnimation("player.sit");
-    private static final Animation standAnimation = assetLoader.getAnimation("player.stand");
+    private final Animation idleAnimation;
+    private final Animation walkAnimation;
+    private final Animation runAnimation;
+    private final Animation sitAnimation;
+    private final Animation standAnimation;
 
-    private static final int defaultSpeed = 3;
-    private static final int walkSpeed = 1;
-
-    private final InputManager inputManager;
-    private Animation animation = idleAnimation;
-    private int speed;
-    private int moveXAxis = 0;
-    private int moveYAxis = 0;
+    private Animation animation;
     private boolean flipped = false;
     private boolean isWalking = false;
 
-    public Player(GameHandler gameHandler, int x, int y, int width, int height) {
-        super(gameHandler, x, y, width, height);
-        speed = defaultSpeed;
-        inputManager = gameHandler.getInputManager();
+    private int keys = 0;
+    private final Rectangle interactionBounds = new Rectangle(16, 16);
 
-        inputManager.addCategoryListener("movement", this);
+    public Player(EntityManager entityManager, int width, int height) {
+        super(entityManager, 0, 0, width, height);
+        collisionBounds = new Rectangle(width/3, (int)(height/1.2), width/3, (int) (height-(height/1.2)));
+        moveSpeed = DEFAULT_SPEED;
 
+        Game game = entityManager.getLevel().getGameState().getGame();
+        idleAnimation = game.getAssetManager().getAnimation("player.idle");
+        walkAnimation = game.getAssetManager().getAnimation("player.walk");
+        runAnimation = game.getAssetManager().getAnimation("player.run");
+        sitAnimation = game.getAssetManager().getAnimation("player.sit");
+        standAnimation = game.getAssetManager().getAnimation("player.stand");
+        animation = idleAnimation;
         animation.restart();
+
+        game.getInputManager().addCategoryListener("player_control", this);
     }
 
-    public Player(GameHandler gameHandler, int x, int y, int size) {
-        this(gameHandler, x, y, size, size);
+    public Player(EntityManager entityManager, int size) {
+        this(entityManager, size, size);
     }
 
     @Override
     public void onActionTriggered(String actionName) {
         switch (actionName) {
-            case("player_up") -> {
-                moveYAxis -= 1;
-            }
-            case("player_down") -> {
-                moveYAxis += 1;
-            }
-            case("player_right") -> {
-                moveXAxis += 1;
-            }
-            case("player_left") -> {
-                moveXAxis -= 1;
-            }
+            case("player_up") -> moveYAxis -= 1;
+            case("player_down") -> moveYAxis += 1;
+            case("player_right") -> moveXAxis += 1;
+            case("player_left") -> moveXAxis -= 1;
+            case("player_interact") -> handleInteraction();
             case("player_walk") -> {
-                speed = walkSpeed;
+                moveSpeed = WALK_SPEED;
                 isWalking = true;
                 standAnimation.setSpeed(0.3);
             }
@@ -85,11 +80,47 @@ public class Player extends Entity implements InputActionEventListener {
                 moveXAxis += 1;
             }
             case("player_walk") -> {
-                speed = defaultSpeed;
+                moveSpeed = DEFAULT_SPEED;
                 isWalking = false;
                 standAnimation.setSpeed(1);
             }
         }
+    }
+
+    public Rectangle getInteractionBounds() {
+        return getInteractionBounds(0, 0);
+    }
+
+    public Rectangle getInteractionBounds(int xOffset, int yOffset) {
+        Rectangle collisionBox = getCollisionBounds(xOffset, yOffset);
+        FacingDirection facingDirection = getFacingDirection();
+
+        return switch(facingDirection) {
+            case RIGHT -> new Rectangle(
+                    (int) (collisionBox.x + collisionBox.width + interactionBounds.width*0.5),
+                    (int) (collisionBox.y + collisionBox.height*0.5 - interactionBounds.height*0.5),
+                    interactionBounds.width,
+                    interactionBounds.height
+            );
+            case LEFT -> new Rectangle(
+                    (int) (collisionBox.x - interactionBounds.width*1.5),
+                    (int) (collisionBox.y + collisionBox.height*0.5 - interactionBounds.height*0.5),
+                    interactionBounds.width,
+                    interactionBounds.height
+            );
+            case UP -> new Rectangle(
+                    (int) (collisionBox.x + collisionBox.width*0.5 - interactionBounds.width*0.5),
+                    (int) (collisionBox.y - interactionBounds.height*1.5),
+                    interactionBounds.width,
+                    interactionBounds.height
+            );
+            case DOWN -> new Rectangle(
+                    (int) (collisionBox.x + collisionBox.width*0.5 - interactionBounds.width*0.5),
+                    (int) (collisionBox.y + collisionBox.height + interactionBounds.height*0.5),
+                    interactionBounds.width,
+                    interactionBounds.height
+            );
+        };
     }
 
     private Animation getAnimation(boolean isMoving) {
@@ -114,17 +145,54 @@ public class Player extends Entity implements InputActionEventListener {
         return targetAnimation;
     }
 
-    public Vector2D getMoveVector() {
-        return new Vector2D(moveXAxis, moveYAxis).normalize();
+    private void handleInteraction() {
+        Rectangle interactionBox = getInteractionBounds();
+        List<Interactable> interactablesInBounds = entityManager.getLevel()
+                .getEntityManager().getInteractablesInBounds(interactionBox);
+
+        Interactable closestInteractable = null;
+        double closestDistance = Double.MAX_VALUE;
+
+        for (Interactable interactable : interactablesInBounds) {
+            if (interactable.canInteract(this)) {
+                Vector2 playerCenter = position.add(size.scale(0.5));
+                Vector2 interactableCenter = ((Entity) interactable).position
+                        .add(((Entity) interactable).getSize().scale(0.5));
+
+                double distance = playerCenter.subtract(interactableCenter).magnitude();
+
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestInteractable = interactable;
+                }
+            }
+        }
+
+        if (closestInteractable != null) {
+            closestInteractable.interact(this);
+        }
+    }
+
+    public void addKey() {
+        keys++;
+    }
+
+    public void removeKey() {
+        if (keys <= 0) return;
+        keys--;
+    }
+
+    public int getKeys() {
+        return keys;
     }
 
     @Override
     public void update() {
-        Vector2D moveVector = getMoveVector();
+        Vector2 moveVector = getMoveVector();
 
-        if (moveVector.x > 0) {
+        if (facingDirection.x > 0) {
             flipped = false;
-        } else if (moveVector.x < 0) {
+        } else if (facingDirection.x < 0) {
             flipped = true;
         }
 
@@ -135,14 +203,46 @@ public class Player extends Entity implements InputActionEventListener {
             animation.restart();
         }
 
-        position = position.add(moveVector.scale(speed));
         animation.update();
+        move();
+        entityManager.getLevel().getGameState().getGame().getCamera().setCameraSubject(this);
     }
 
     @Override
     public void render(Graphics graphics) {
-        Vector2D offset = gameHandler.getCamera().getPosition();
+        Vector2 cameraPosition = entityManager.getLevel().getGameState().getGame().getCamera().getPosition();
+        Vector2 worldPosition = position.subtract(cameraPosition);
         Sprite sprite = flipped ? animation.getSprite().flipHorizontal() : animation.getSprite();
-        graphics.drawImage(sprite.getImage(), (int) (position.x - offset.x), (int) (position.y - offset.y), (int) size.x, (int) size.y, null);
+
+        graphics.drawImage(
+                sprite.getImage(),
+                (int) worldPosition.x,
+                (int) worldPosition.y,
+                (int) size.x,
+                (int) size.y,
+                null
+        );
+    }
+
+    private void renderDebug(Graphics graphics, Vector2 cameraPosition) {
+        Vector2 invertedCameraPosition = cameraPosition.scale(-1);
+        Rectangle collisionBox = getCollisionBounds((int) invertedCameraPosition.x, (int) invertedCameraPosition.y);
+        Rectangle interactionBox = getInteractionBounds((int) invertedCameraPosition.x, (int) invertedCameraPosition.y);
+
+        graphics.setColor(Color.RED);
+        graphics.drawRect(
+                collisionBox.x,
+                collisionBox.y,
+                collisionBox.width,
+                collisionBox.height
+        );
+
+        graphics.setColor(Color.CYAN);
+        graphics.drawRect(
+                interactionBox.x,
+                interactionBox.y,
+                interactionBox.width,
+                interactionBox.height
+        );
     }
 }

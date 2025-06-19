@@ -3,6 +3,7 @@ package aragon.game.input;
 import aragon.game.input.data.InputActionData;
 import aragon.game.input.data.InputCategoryData;
 import aragon.game.input.data.InputData;
+import aragon.game.main.Game;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
@@ -24,26 +25,28 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
-public class InputLoader {
-    private static final Logger LOGGER = LogManager.getLogger(InputLoader.class);
-    private static InputLoader inputLoader;
+public final class InputLoader {
+    private static InputLoader instance;
+
+    private final Logger LOGGER = LogManager.getLogger(InputLoader.class);
 
     private Map<String, InputCategoryData> inputCategories;
     private final InputManager inputManager;
     private final Gson gson;
     private final Validator validator;
 
-    private InputLoader(InputManager inputManager) {
-        this.inputManager = inputManager;
+    private InputLoader(Game game) {
+        this.inputManager = game.getInputManager();
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.validator = Validation.buildDefaultValidatorFactory().getValidator();
+        LOGGER.info("Instantiated new singleton.");
     }
 
-    public static InputLoader build(InputManager inputManager) {
-        if (inputLoader == null) {
-            inputLoader = new InputLoader(inputManager);
+    public static InputLoader build(Game game) {
+        if (instance == null) {
+            instance = new InputLoader(game);
         }
-        return inputLoader;
+        return instance;
     }
 
     public void initialize() throws InputLoadingException {
@@ -120,7 +123,6 @@ public class InputLoader {
             InputCategoryData inputCategoryData = categoryEntry.getValue();
 
             inputManager.createCategory(categoryName);
-            LOGGER.info("Added input category " + categoryName);
 
             for (Map.Entry<String, InputActionData> actionEntry : inputCategoryData.getActions().entrySet()) {
                 String actionName = actionEntry.getKey();
@@ -131,8 +133,6 @@ public class InputLoader {
                 for (InputData inputData : actionConfig.getInputs()) {
                     Input input = createInputFromConfig(inputData);
                     inputManager.addInputToAction(action, input);
-
-                    LOGGER.debug(String.format("Bound %s to action %s", inputData, actionName));
                 }
 
                 LOGGER.info(String.format("Configured action %s with %d inputs.",
@@ -151,9 +151,7 @@ public class InputLoader {
             case "MOUSE" -> {
                 return Input.mouse(resolvedCode);
             }
-            default -> {
-                throw new IllegalArgumentException("Unknown input type: " + inputData.getType());
-            }
+            default -> throw new IllegalArgumentException("Unknown input type: " + inputData.getType());
         }
     }
 

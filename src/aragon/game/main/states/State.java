@@ -1,5 +1,8 @@
 package aragon.game.main.states;
 
+import aragon.game.level.Level;
+import aragon.game.main.Game;
+
 import java.awt.Graphics;
 
 public abstract class State {
@@ -11,10 +14,13 @@ public abstract class State {
         return currentState;
     }
 
-    protected aragon.game.main.GameHandler handler;
+    protected Game game;
+    protected Level level;
 
-    public State(aragon.game.main.GameHandler handler) { this.handler = handler; }
+    public State(Game game) { this.game = game; }
 
+    public Level getLevel() { return level; }
+    public Game getGame() { return game; }
     public abstract void update();
     public abstract void render(Graphics graphics);
 }

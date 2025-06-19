@@ -1,20 +1,17 @@
 package aragon.game.level;
 
-import aragon.game.graphics.Sprite;
 import aragon.game.graphics.SpriteSheet;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class TileSet {
-    private final String name;
     private final SpriteSheet sheet;
     private final int tileWidth;
     private final int tileHeight;
     private final Map<Integer, Tile> tiles;
 
-    public TileSet(String name, SpriteSheet sheet, int tileWidth, int tileHeight) {
-        this.name = name;
+    public TileSet(SpriteSheet sheet, int tileWidth, int tileHeight) {
         this.sheet = sheet;
         this.tileWidth = tileWidth;
         this.tileHeight = tileHeight;
@@ -25,8 +22,6 @@ public class TileSet {
         tiles.put(id, new Tile(id, tileWidth, tileHeight, type, sheet.getSprite(x, y)));
     }
 
-    public String getName() { return name; }
-    public SpriteSheet getSheet() { return sheet; }
     public int getTileWidth() { return tileWidth; }
     public int getTileHeight() { return tileHeight; }
 

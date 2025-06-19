@@ -1,0 +1,55 @@
+{
+  "sheet": {
+    "path": "garden",
+    "size": {
+      "x": 64,
+      "y": 64
+    }
+  },
+  "tiles": [
+    {
+      "sprite": { "x": 0, "y": 0 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 1, "y": 0 },
+      "type": "WALL"
+    },
+    {
+      "sprite": { "x": 2, "y": 0 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 0, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 1, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 2, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 3, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 4, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 5, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 6, "y": 1 },
+      "type": "GROUND"
+    },
+    {
+      "sprite": { "x": 7, "y": 1 },
+      "type": "GROUND"
+    }
+  ]
+}

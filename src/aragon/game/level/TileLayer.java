@@ -1,8 +1,6 @@
 package aragon.game.level;
 
-import aragon.game.main.GameHandler;
-import aragon.game.main.states.State;
-import aragon.game.util.Vector2D;
+import aragon.game.util.Vector2;
 
 import java.awt.*;
 
@@ -15,7 +13,7 @@ public class TileLayer implements Comparable<TileLayer> {
     private boolean visible;
     private float opacity;
     private int zOrder;
-    private int[][] tiles;
+    private final int[][] tiles;
 
     public TileLayer(String name, int width, int height, TileLayerType type, TileSet tileSet) {
         this.name = name;
@@ -61,15 +59,15 @@ public class TileLayer implements Comparable<TileLayer> {
         return isValidPosition(x, y) && tiles[y][x] != -1;
     }
 
-    public void render(Graphics graphics, GameHandler gameHandler) {
+    public void render(Graphics graphics, Level level) {
         if (!visible) return;
 
-        Vector2D cameraPosition = gameHandler.getCamera().getPosition();
+        Vector2 cameraPosition = level.getGameState().getGame().getCamera().getPosition();
 
         int startX = (int) Math.max(0, cameraPosition.x / tileSet.getTileWidth()-1);
-        int endX = (int) Math.min(width, (cameraPosition.x + gameHandler.getGame().getScreenWidth()) / tileSet.getTileWidth()+1);
+        int endX = (int) Math.min(width, (cameraPosition.x + level.getGameState().getGame().getScreenWidth()) / tileSet.getTileWidth()+1);
         int startY = (int) Math.max(0, cameraPosition.y / tileSet.getTileHeight()-1);
-        int endY = (int) Math.min(height, (cameraPosition.y + gameHandler.getGame().getScreenHeight()) / tileSet.getTileHeight()+1);
+        int endY = (int) Math.min(height, (cameraPosition.y + level.getGameState().getGame().getScreenHeight()) / tileSet.getTileHeight()+1);
 
         // TODO: Apply opacity to Sprites.
 
@@ -79,7 +77,7 @@ public class TileLayer implements Comparable<TileLayer> {
                 if (tileId != -1) {
                     Tile tile = tileSet.getTile(tileId);
                     if (tile != null) {
-                        tile.render(graphics, gameHandler,x * tileSet.getTileWidth(), y * tileSet.getTileHeight());
+                        tile.render(graphics, level,x * tileSet.getTileWidth(), y * tileSet.getTileHeight());
                     }
                 }
             }
@@ -94,8 +92,8 @@ public class TileLayer implements Comparable<TileLayer> {
         return tile != null && tile.getType().isSolid();
     }
 
-    public Vector2D getPositionAt(int x, int y, float scale) {
-        return new Vector2D(x * tileSet.getTileWidth() * scale, y * tileSet.getTileHeight() * scale);
+    public Vector2 getPositionAt(int x, int y, float scale) {
+        return new Vector2(x * tileSet.getTileWidth() * scale, y * tileSet.getTileHeight() * scale);
     }
 
     public String getName() { return name; }

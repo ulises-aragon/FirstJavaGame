@@ -1,7 +1,7 @@
 package aragon.game.main;
 
-import aragon.game.assets.AssetLoadingException;
 import aragon.game.assets.AssetLoader;
+import aragon.game.assets.AssetManager;
 import aragon.game.input.InputLoader;
 import aragon.game.input.InputLoadingException;
 import aragon.game.input.InputManager;
@@ -15,12 +15,12 @@ import java.awt.Color;
 import java.awt.image.BufferStrategy;
 
 public class Game implements Runnable {
-    private static final Logger LOGGER = LogManager.getLogger(Game.class);
+    private final Logger LOGGER = LogManager.getLogger(Game.class);
 
     private GameDisplay display;
     private InputManager inputManager;
+    private AssetManager assetManager;
 
-    private GameHandler handler;
     private GameCamera camera;
 
     private InputLoader inputLoader;
@@ -35,10 +35,10 @@ public class Game implements Runnable {
     public String title;
 
     private final int tileSize;
-    private int width=256, height=192;
+    private int width, height;
 
-    private int updatesPerSecond = 60;
-    private int framesPerSecond = 30;
+    private final int updatesPerSecond = 60;
+    private final int framesPerSecond = 30;
 
     public Game(String title, int tileSize, int width, int height) {
         this.title = title;
@@ -70,28 +70,30 @@ public class Game implements Runnable {
     }
     public GameCamera getCamera() { return camera; }
 
-    public AssetLoader getAssetLoader() { return assetLoader; }
+    public AssetManager getAssetManager() { return assetManager; }
     public InputManager getInputManager() { return inputManager; }
 
-    private void init() throws AssetLoadingException, InputLoadingException {
+    private void init() throws InputLoadingException {
+        LOGGER.info("Initializing display.");
         display = new GameDisplay(this, title, width, height);
-        LOGGER.info("Initialized display.");
+        LOGGER.info("Building managers.");
         inputManager = InputManager.build(this);
-        LOGGER.info("Initialized InputManager.");
+        assetManager = AssetManager.build();
 
-        handler = new GameHandler(this);
-        camera = new GameCamera(handler);
+        camera = new GameCamera(this);
 
-        // Initialize loaders.
-        inputLoader = InputLoader.build(inputManager);
+        // Build loaders.
+        LOGGER.info("Building loaders.");
+        inputLoader = InputLoader.build(this);
         assetLoader = AssetLoader.build(this);
 
         // Load assets.
+        LOGGER.info("Initializing loaders.");
         inputLoader.initialize();
         assetLoader.initializeAsync()
                 .thenRun(() -> {
                     // Start.
-                    gameState = new GameState(handler);
+                    gameState = new GameState(this);
                     State.setState(gameState);
                 })
                 .exceptionally(exception -> {
@@ -179,7 +181,7 @@ public class Game implements Runnable {
             gameThread.join();
             gameThread = null;
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            LOGGER.fatal(e);
         }
     }
 }

@@ -1,25 +1,28 @@
 package aragon.game.input;
 
-import aragon.game.util.Vector2D;
+import aragon.game.util.Vector2;
 import aragon.game.main.Game;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.awt.event.*;
 import java.util.*;
 
 public final class InputManager implements KeyListener, MouseListener, MouseMotionListener, MouseWheelListener {
-    private static InputManager instance;
+    private static volatile InputManager instance;
 
     // Static key and mouse containers.
     private static final int MAX_KEYS = 512;
     private static final int MAX_MOUSE_BUTTONS = 10;
+    private final Logger LOGGER = LogManager.getLogger(InputManager.class);
     private final boolean[] keys = new boolean[MAX_KEYS];
     private final boolean[] previousKeys = new boolean[MAX_KEYS];
     private final boolean[] buttons = new boolean[MAX_MOUSE_BUTTONS];
     private final boolean[] previousButtons = new boolean[MAX_MOUSE_BUTTONS];
 
     // Mouse management.
-    private Vector2D lastMousePosition = Vector2D.zero;
-    private Vector2D mousePosition = Vector2D.zero;
+    private Vector2 lastMousePosition = Vector2.zero;
+    private Vector2 mousePosition = Vector2.zero;
     private int scrollDelta = 0;
 
     // Input buffer.
@@ -40,7 +43,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     private static final long HOLD_EVENT_INTERVAL = 100;
 
     private final Queue<InputActionEvent> eventQueue = new LinkedList<>();
-    private boolean defferedEventProcessing = false;
+    private boolean deferredEventProcessing = false;
 
     // Action management.
     private final Map<String, Set<InputAction>> inputCategories = new HashMap<>();
@@ -49,14 +52,12 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
 
     private final Map<String, Long> actionPressTime = new HashMap<>();
 
-    private final Game game;
-
     private InputManager(Game game) {
-        this.game = game;
         game.getDisplay().getCanvas().addKeyListener(this);
         game.getDisplay().getCanvas().addMouseListener(this);
         game.getDisplay().getCanvas().addMouseMotionListener(this);
         game.getDisplay().getCanvas().addMouseWheelListener(this);
+        LOGGER.info("Instantiated new singleton.");
     }
 
     public static InputManager build(Game game) {
@@ -76,15 +77,18 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     // InputAction management.
     public void createCategory(String categoryName) {
         inputCategories.put(categoryName, new HashSet<>());
+        LOGGER.info("Created new action category {}.", categoryName);
     }
 
     public void removeCategory(String categoryName) {
         inputCategories.remove(categoryName);
+        LOGGER.info("Removed action category {}.", categoryName);
     }
 
     public InputAction bind(String actionName) {
         InputAction action = new InputAction(actionName);
         inputActions.put(actionName, action);
+        LOGGER.info("Bound new action {}.", actionName);
         return action;
     }
 
@@ -92,6 +96,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
         InputAction action = bind(actionName);
         for (Input input : inputs) {
             action.addInput(input);
+            addInputToAction(action, input);
         }
         return action;
     }
@@ -100,21 +105,23 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
         InputAction action = bind(actionName);
         for (int keyCode : keyCodes) {
             action.addKeyCode(keyCode);
+            LOGGER.info("Added key code {} to action {}.", keyCode, actionName);
         }
         return action;
     }
 
     public InputAction bind(String categoryName, String actionName) {
-        Set<InputAction> category = inputCategories.computeIfAbsent(categoryName, k -> { return new HashSet<>(); });
+        Set<InputAction> category = inputCategories.computeIfAbsent(categoryName, k -> new HashSet<>());
         InputAction action = bind(actionName);
         category.add(action);
+        LOGGER.info("Bound {} to category {}.", actionName, categoryName);
         return action;
     }
 
     public InputAction bind(String categoryName, String actionName, Input... inputs) {
         InputAction action = bind(categoryName, actionName);
         for (Input input : inputs) {
-            action.addInput(input);
+            addInputToAction(action, input);
         }
         return action;
     }
@@ -137,6 +144,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     public boolean addInputToAction(InputAction action, Input input) {
         action.addInput(input);
         inputToActions.computeIfAbsent(input, k -> new HashSet<>()).add(action.getName());
+        LOGGER.info("Added {} to action {}.", input.toString(), action.getName());
         return true;
     }
 
@@ -151,6 +159,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
         Set<String> actionsForInput = inputToActions.get(input);
         if (actionsForInput != null) {
             actionsForInput.remove(action.getName());
+            LOGGER.info("Removed {} from action {}.", input.toString(), action.getName());
             if (actionsForInput.isEmpty()) {
                 inputToActions.remove(input);
             }
@@ -175,6 +184,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
             }
         }
         action.clearInputs();
+        LOGGER.info("Cleared inputs from action {}.", action.getName());
     }
 
     public void reassignAction(String actionName, Input... inputs) {
@@ -252,8 +262,8 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
         mouseEventListeners.remove(listener);
     }
 
-    public void setDefferedEventProcessing(boolean enabled) {
-        defferedEventProcessing = enabled;
+    public void setDeferredEventProcessing(boolean enabled) {
+        deferredEventProcessing = enabled;
         if (!enabled) {
             eventQueue.clear();
         }
@@ -269,7 +279,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     private void fireActionPressed(String actionName, Input triggeringInput) {
         InputActionEvent event = new InputActionEvent(actionName, System.currentTimeMillis(), InputActionEventType.PRESSED, triggeringInput);
 
-        if (defferedEventProcessing) {
+        if (deferredEventProcessing) {
             eventQueue.offer(event);
         } else {
             fireInputEvent(event);
@@ -279,7 +289,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     private void fireActionReleased(String actionName, Input triggeringInput) {
         InputActionEvent event = new InputActionEvent(actionName, System.currentTimeMillis(), InputActionEventType.RELEASED, triggeringInput);
 
-        if (defferedEventProcessing) {
+        if (deferredEventProcessing) {
             eventQueue.offer(event);
         } else {
             fireInputEvent(event);
@@ -649,20 +659,20 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
         return valid && !buttons[button] && previousButtons[button];
     }
 
-    public Vector2D getMousePosition() {
-        return new Vector2D(mousePosition);
+    public Vector2 getMousePosition() {
+        return new Vector2(mousePosition);
     }
 
     public int getScrollDelta() {
         return scrollDelta;
     }
 
-    public Vector2D getMouseDelta() {
+    public Vector2 getMouseDelta() {
         return mousePosition.subtract(lastMousePosition);
     }
 
     public boolean isMouseInArea(int x, int y, int width, int height) {
-        Vector2D pos = getMousePosition();
+        Vector2 pos = getMousePosition();
         return pos.x >= x && pos.x < x + width &&
                 pos.y >= y && pos.y < y + height;
     }
@@ -671,7 +681,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     public void updateBuffer() {
         if (!bufferingEnabled) return;
         long currentTime = System.currentTimeMillis();
-        inputBuffer.removeIf(inputActionEvent -> (currentTime - inputActionEvent.getTimestamp()) > (long) (bufferTimeMs * 2));
+        inputBuffer.removeIf(inputActionEvent -> (currentTime - inputActionEvent.getTimestamp()) >  bufferTimeMs*2L);
 
         for (String actionName : inputActions.keySet()) {
             boolean currentlyPressed = isActionHeld(actionName);
@@ -706,7 +716,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
             previousStates.put(actionName, currentlyPressed);
         }
 
-        Vector2D mouseDelta = getMouseDelta();
+        Vector2 mouseDelta = getMouseDelta();
         if (mouseDelta.magnitude() > 0 || scrollDelta != 0) {
             InputMouseEvent mouseEvent = new InputMouseEvent(getMousePosition(), mouseDelta, scrollDelta);
             fireInputMouseEvent(mouseEvent);
@@ -716,7 +726,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     public void update() {
         updateBuffer();
 
-        lastMousePosition = new Vector2D(mousePosition);
+        lastMousePosition = new Vector2(mousePosition);
         scrollDelta = 0;
         System.arraycopy(keys, 0, previousKeys, 0, keys.length);
         System.arraycopy(buttons, 0, previousButtons, 0, buttons.length);
@@ -767,12 +777,12 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     // MouseMotionListener methods.
     @Override
     public void mouseMoved(MouseEvent event) {
-        mousePosition = new Vector2D((int) event.getX(), (int) event.getY());
+        mousePosition = new Vector2(event.getX(), event.getY());
     }
 
     @Override
     public void mouseDragged(MouseEvent event) {
-        mousePosition = new Vector2D((int) event.getX(), (int) event.getY());
+        mousePosition = new Vector2(event.getX(), event.getY());
     }
 
     @Override
@@ -789,7 +799,7 @@ public final class InputManager implements KeyListener, MouseListener, MouseMoti
     public Map<String, Map<String, Set<Input>>> getActionMappings() {
         Map<String, Map<String, Set<Input>>> mappings = new HashMap<>();
         for (Map.Entry<String, Set<InputAction>> entry : inputCategories.entrySet()) {
-            Map<String, Set<Input>> categoryMappings = mappings.computeIfAbsent(entry.getKey(), k -> { return new HashMap<>(); });
+            Map<String, Set<Input>> categoryMappings = mappings.computeIfAbsent(entry.getKey(), k -> new HashMap<>());
             for (InputAction action : entry.getValue()) {
                 categoryMappings.put(action.getName(), action.getBoundInputs());
             }
